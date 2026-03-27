@@ -86,6 +86,25 @@ typedef struct LogCallbacks {
   void (*onEvent)(const void *data, const FixSessionID_t *sessionId, const char *msg);
 } FixLogCallbacks_t;
 
+typedef struct MessageStoreCallbacks {
+  void *(*onCreate)(const void *factoryData, const FixSessionID_t *session, int64_t nowUtcSecs);
+  void (*onDestroy)(const void *factoryData, void *storeData);
+  int8_t (*set)(void *storeData, uint64_t seqNum, const char *msg);
+  void (*get)(void *storeData, uint64_t beginSeqNum, uint64_t endSeqNum,
+               void *pushCtx, void (*pushFn)(void *pushCtx, const char *msg));
+  uint64_t (*getNextSenderSeqNum)(void *storeData);
+  uint64_t (*getNextTargetSeqNum)(void *storeData);
+  void (*setNextSenderSeqNum)(void *storeData, uint64_t value);
+  void (*setNextTargetSeqNum)(void *storeData, uint64_t value);
+  void (*incrNextSenderSeqNum)(void *storeData);
+  void (*incrNextTargetSeqNum)(void *storeData);
+  int64_t (*getCreationTime)(void *storeData);
+  void (*reset)(void *storeData, int64_t nowUtcSecs);
+  void (*refresh)(void *storeData);
+} FixMessageStoreCallbacks_t;
+
+FixMessageStoreFactory_t *FixCustomMessageStoreFactory_new(const void *data, const FixMessageStoreCallbacks_t *callbacks);
+
 const char *Fix_getLastErrorMessage();
 int8_t Fix_getLastErrorCode();
 void Fix_clearLastErrorMessage();

@@ -106,6 +106,34 @@ pub struct FixLogCallbacks_t {
     ),
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct FixMessageStoreCallbacks_t {
+    pub onCreate: extern "C" fn(
+        factoryData: *const ffi::c_void,
+        session: Option<FixSessionID_t>,
+        nowUtcSecs: i64,
+    ) -> *mut ffi::c_void,
+    pub onDestroy: extern "C" fn(factoryData: *const ffi::c_void, storeData: *mut ffi::c_void),
+    pub set: extern "C" fn(storeData: *mut ffi::c_void, seqNum: u64, msg: *const ffi::c_char) -> i8,
+    pub get: extern "C" fn(
+        storeData: *mut ffi::c_void,
+        beginSeqNum: u64,
+        endSeqNum: u64,
+        pushCtx: *mut ffi::c_void,
+        pushFn: extern "C" fn(*mut ffi::c_void, *const ffi::c_char),
+    ),
+    pub getNextSenderSeqNum: extern "C" fn(storeData: *mut ffi::c_void) -> u64,
+    pub getNextTargetSeqNum: extern "C" fn(storeData: *mut ffi::c_void) -> u64,
+    pub setNextSenderSeqNum: extern "C" fn(storeData: *mut ffi::c_void, value: u64),
+    pub setNextTargetSeqNum: extern "C" fn(storeData: *mut ffi::c_void, value: u64),
+    pub incrNextSenderSeqNum: extern "C" fn(storeData: *mut ffi::c_void),
+    pub incrNextTargetSeqNum: extern "C" fn(storeData: *mut ffi::c_void),
+    pub getCreationTime: extern "C" fn(storeData: *mut ffi::c_void) -> i64,
+    pub reset: extern "C" fn(storeData: *mut ffi::c_void, nowUtcSecs: i64),
+    pub refresh: extern "C" fn(storeData: *mut ffi::c_void),
+}
+
 #[link(name = "quickfixbind")]
 extern "C" {
 
@@ -209,6 +237,11 @@ extern "C" {
     pub fn FixMemoryMessageStoreFactory_new() -> Option<FixMessageStoreFactory_t>;
 
     pub fn FixNullMessageStoreFactory_new() -> Option<FixMessageStoreFactory_t>;
+
+    pub fn FixCustomMessageStoreFactory_new(
+        data: *const ffi::c_void,
+        callbacks: *const FixMessageStoreCallbacks_t,
+    ) -> Option<FixMessageStoreFactory_t>;
 
     #[cfg(feature = "build-with-mysql")]
     pub fn FixMysqlMessageStoreFactory_new(

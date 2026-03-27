@@ -365,6 +365,127 @@ public:
   void destroy(Log *log) override { delete log; }
 };
 
+class ExternalMessageStore : public MessageStore {
+private:
+  void *m_storeData;
+  const MessageStoreCallbacks *m_callbacks;
+
+public:
+  ExternalMessageStore(void *storeData, const MessageStoreCallbacks *callbacks)
+      : m_storeData(storeData), m_callbacks(callbacks) {}
+
+  ExternalMessageStore(const ExternalMessageStore &) = delete;
+  ExternalMessageStore &operator=(const ExternalMessageStore &) = delete;
+
+  virtual ~ExternalMessageStore() {}
+
+  void *getStoreData() const { return m_storeData; }
+
+  bool set(SEQNUM seqNum, const std::string &msg) EXCEPT(IOException) override {
+    RETURN_VAL_IF_NULL(m_callbacks, false);
+    RETURN_VAL_IF_NULL(m_callbacks->set, false);
+    return m_callbacks->set(m_storeData, seqNum, msg.c_str()) != 0;
+  }
+
+  void get(SEQNUM beginSeqNum, SEQNUM endSeqNum, std::vector<std::string> &result) const EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->get);
+    m_callbacks->get(m_storeData, beginSeqNum, endSeqNum,
+                     static_cast<void *>(&result),
+                     [](void *ctx, const char *msg) {
+                       static_cast<std::vector<std::string> *>(ctx)->push_back(std::string(msg));
+                     });
+  }
+
+  SEQNUM getNextSenderMsgSeqNum() const EXCEPT(IOException) override {
+    RETURN_VAL_IF_NULL(m_callbacks, 1);
+    RETURN_VAL_IF_NULL(m_callbacks->getNextSenderSeqNum, 1);
+    return m_callbacks->getNextSenderSeqNum(m_storeData);
+  }
+
+  SEQNUM getNextTargetMsgSeqNum() const EXCEPT(IOException) override {
+    RETURN_VAL_IF_NULL(m_callbacks, 1);
+    RETURN_VAL_IF_NULL(m_callbacks->getNextTargetSeqNum, 1);
+    return m_callbacks->getNextTargetSeqNum(m_storeData);
+  }
+
+  void setNextSenderMsgSeqNum(SEQNUM value) EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->setNextSenderSeqNum);
+    m_callbacks->setNextSenderSeqNum(m_storeData, value);
+  }
+
+  void setNextTargetMsgSeqNum(SEQNUM value) EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->setNextTargetSeqNum);
+    m_callbacks->setNextTargetSeqNum(m_storeData, value);
+  }
+
+  void incrNextSenderMsgSeqNum() EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->incrNextSenderSeqNum);
+    m_callbacks->incrNextSenderSeqNum(m_storeData);
+  }
+
+  void incrNextTargetMsgSeqNum() EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->incrNextTargetSeqNum);
+    m_callbacks->incrNextTargetSeqNum(m_storeData);
+  }
+
+  UtcTimeStamp getCreationTime() const EXCEPT(IOException) override {
+    int64_t secs = (m_callbacks && m_callbacks->getCreationTime)
+                       ? m_callbacks->getCreationTime(m_storeData) : 0;
+    return UtcTimeStamp(static_cast<time_t>(secs));
+  }
+
+  void reset(const UtcTimeStamp &now) EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->reset);
+    m_callbacks->reset(m_storeData, static_cast<int64_t>(now.getTimeT()));
+  }
+
+  void refresh() EXCEPT(IOException) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(m_callbacks->refresh);
+    m_callbacks->refresh(m_storeData);
+  }
+};
+
+class ExternalMessageStoreFactory : public MessageStoreFactory {
+private:
+  const void *m_factoryData;
+  const MessageStoreCallbacks *m_callbacks;
+
+public:
+  ExternalMessageStoreFactory(const void *data, const MessageStoreCallbacks *callbacks)
+      : m_factoryData(data), m_callbacks(callbacks) {}
+
+  ExternalMessageStoreFactory(const ExternalMessageStoreFactory &) = delete;
+  ExternalMessageStoreFactory &operator=(const ExternalMessageStoreFactory &) = delete;
+
+  virtual ~ExternalMessageStoreFactory() {}
+
+  MessageStore *create(const UtcTimeStamp &now, const SessionID &session) override {
+    RETURN_VAL_IF_NULL(m_callbacks, nullptr);
+    RETURN_VAL_IF_NULL(m_callbacks->onCreate, nullptr);
+    int64_t nowSecs = static_cast<int64_t>(now.getTimeT());
+    void *storeData = m_callbacks->onCreate(m_factoryData, &session, nowSecs);
+    if (!storeData) return nullptr;
+    return new ExternalMessageStore(storeData, m_callbacks);
+  }
+
+  void destroy(MessageStore *store) override {
+    RETURN_IF_NULL(m_callbacks);
+    RETURN_IF_NULL(store);
+    auto *extStore = static_cast<ExternalMessageStore *>(store);
+    if (m_callbacks->onDestroy) {
+      m_callbacks->onDestroy(m_factoryData, extStore->getStoreData());
+    }
+    delete store;
+  }
+};
+
 SessionSettings *FixSessionSettings_new() {
   CATCH_OR_RETURN_NULL({ return new SessionSettings(); });
 }
@@ -568,6 +689,11 @@ MessageStoreFactory *FixPostgresMessageStoreFactory_new(const SessionSettings *s
   CATCH_OR_RETURN_NULL({ return new PostgreSQLStoreFactory(*settings); });
 }
 #endif // HAVE_POSTGRESQL
+
+MessageStoreFactory *FixCustomMessageStoreFactory_new(const void *data, const MessageStoreCallbacks *callbacks) {
+  RETURN_VAL_IF_NULL(callbacks, NULL);
+  CATCH_OR_RETURN_NULL({ return new ExternalMessageStoreFactory(data, callbacks); });
+}
 
 void FixMessageStoreFactory_delete(const MessageStoreFactory *obj) {
   RETURN_IF_NULL(obj);

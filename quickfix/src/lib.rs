@@ -144,6 +144,11 @@ pub use message_store_factory::{
     FfiMessageStoreFactory, FileMessageStoreFactory, MemoryMessageStoreFactory,
     NullMessageStoreFactory,
 };
+pub use message_store_factory::custom::{
+    CustomMessageStoreFactory, MessageStoreCallback, MessageStoreFactoryCallback,
+};
+pub use message_store_factory::null_rust::{RustNullStore, RustNullStoreFactory};
+pub use message_store_factory::wal::{WalStore, WalStoreFactory};
 pub use session::{send_to_target, Session};
 pub use session_id::SessionId;
 pub use session_settings::SessionSettings;
