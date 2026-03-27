@@ -13,7 +13,6 @@ pub mod postgres;
 
 pub mod custom;
 pub mod null_rust;
-pub mod wal;
 
 ///  Object can be converted as a foreign object representing a `MessageStore`.
 pub trait FfiMessageStoreFactory {
